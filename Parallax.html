@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Parallax</title>
+    <script src="./node_modules/jquery/dist/jquery.min.js"></script>
+    <script src="./node_modules/easy-autocomplete/dist/jquery.easy-autocomplete.min.js"></script>
+
+    <style>
+        body {
+            overflow: hidden; /* Hide scrollbars */
+            margin: 0px;
+            padding: 0px;
+        }
+        canvas {
+         
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Hide scrollbars */
+        }
+
+        #eccentricity {
+            position: absolute;
+            top: 50;
+            right: 50
+        }
+    </style>
+</head>
+
+<body>
+    <script type="module">
+
+        var THESKYLIVE = {};
+
+        import {
+               DoubleSide, FrontSide, BackSide, TextBufferGeometry, MeshPhongMaterial, TextureLoader, CubeTextureLoader
+        } from "./node_modules/three/build/three.module.js";
+
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.124/build/three.module.js'; 
+
+        import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.124/examples/jsm/controls/OrbitControls.js';
+
+        const textureLoader = new TextureLoader();
+        const cubeTextureLoader = new CubeTextureLoader();
+
+        const scene = new THREE.Scene();
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5500);
+        const renderer = new THREE.WebGLRenderer({antialias:true});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        const color = 0xFFFFFF;
+        const intensity = 2;
+        const light = new THREE.PointLight(color, intensity);
+        light.position.x = 0;
+        light.position.y = 0;
+        light.position.z = 0;
+        //scene.add(light);
+        const planetLight = new THREE.PointLight(color, intensity, 100, 2);
+        const sunSpotlight = new THREE.PointLight(0xffffff, 2, 500);
+        sunSpotlight.position.set(0,5,0);
+        const sphereRadius = 1;
+        var time;
+        
+        document.body.appendChild(renderer.domElement);
+        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+        const meshMaterial = new MeshPhongMaterial({ color: 0x156289, emissive: 0x072534, flatShading: false });
+        const sunMaterial = new MeshPhongMaterial({ color: 0xcebc21, emissive: 0xd1b982 });
+        const groundMaterial = new THREE.MeshPhongMaterial({ color: 0x456394, flatShading: true, side: THREE.DoubleSide, transparent: true, opacity: 1 });
+        groundMaterial.shadowSide = THREE.FrontSide;
+        const sphereGeometry = new THREE.SphereGeometry(sphereRadius, 40, 20);
+ 
+        const sphereBuffer = new THREE.BufferGeometry
+        const sun = new THREE.Mesh(sphereGeometry, sunMaterial);
+        const sphere3 = new THREE.Mesh(sphereGeometry, meshMaterial);
+        scene.add(sun);
+        scene.add(sphere3);
+        //scene.add(sunSpotlight);
+        const ambLight = new THREE.AmbientLight( 0x404040 );
+        scene.add(ambLight);
+
+        sunSpotlight.target = sphere3;
+        planetLight.position.x = sphere3.position.x;
+        planetLight.position.z = sphere3.position.z;
+        planetLight.position.y = sphere3.position.y+20;
+
+        scene.add(planetLight);
+
+        camera.position.z = 0;
+        camera.position.y = 5;
+
+        var loader = new THREE.TextureLoader();
+        loader.load('./eso_dark.jpg', function (skyTexture) {
+            const skyGeometry = new THREE.SphereGeometry(5000, 60, 40);
+            skyGeometry.applyMatrix4(new THREE.Matrix4().makeScale( -1, 1, 1 ));
+            const skyMaterial = new THREE.MeshBasicMaterial({ map: skyTexture });
+            var sky = new THREE.Mesh(skyGeometry, skyMaterial);
+            var m = new THREE.Matrix4();
+            m.makeRotationY(3*Math.PI/2);
+            m.makeRotationX(-1.099);
+            sky.applyMatrix4(m);
+            m = new THREE.Matrix4();
+            m.makeRotationY(Math.PI/2);
+            sky.applyMatrix4(m);
+            scene.add(sky);         
+        });
+  
+
+        var Planet = {
+            x: null,
+            y: null,
+            rx: 220,
+            ry: 220,
+            viewportHeight: 265,
+            orbitalSpeed: null,
+            orbitalSpeedActual: null,
+            degreeOffset: 180,
+            degrees: -180,
+            gravitationalConstant: 0.00000000006673889,
+            MSun: 1988500,
+            GMSun: 1.32712440018,
+            c: 156.12494995995996,
+            day: 1,
+            AlphaLoop: 46,
+            AlphaLoopChange: -1,
+            startAng: null,
+            endAng: null,
+            startAng2: null,
+            endAng2: null,
+        };
+
+
+        var a = Planet.rx * Planet.rx;
+        var b = Planet.ry * Planet.ry;
+        var c = Math.sqrt(a - b);
+        Planet.c = c;
+
+        const curve = new THREE.EllipseCurve(
+            c, 0,            // ax, aY
+            Planet.rx, Planet.ry,           // xRadius, yRadius
+            0, 2 * Math.PI,  // aStartAngle, aEndAngle
+            false,            // aClockwise
+            0                 // aRotation
+        );
+      
+        const points = curve.getPoints(150);
+        const ellipseGeometry = new THREE.Geometry().setFromPoints(points);
+        ellipseGeometry.verticesNeedUpdate = true;
+        const ellipseMaterial = new THREE.LineBasicMaterial({ color: 0xff1dce });
+        var star = [];
+        const starGeometry = new THREE.SphereGeometry(10, 20, 20);
+        const starMaterials = [];
+        const starGeometries = [];
+        var max = 2300;
+        var min = -2300;
+        for (let i=0; i<800; i++){
+            starMaterials[i] = new THREE.MeshPhongMaterial({color: 'blue', emissive: 0x8e8e8e});
+            starGeometries[i] = new THREE.SphereGeometry(Math.random()*20, 20, 20);
+            star[i] = new THREE.Mesh(starGeometries[i], starMaterials[i]);
+            star[i].position.x = Math.random() * (max - min) + min;
+            star[i].position.y = Math.random() * (max - min) + min;
+            star[i].position.z = Math.random() * (max - min) + min;
+            star[i].material.emissive.setRGB(Math.random(), Math.random(), Math.random());
+            star[i].material.color.setRGB(Math.random(), Math.random(), Math.random());
+
+            scene.add(star[i]);
+        }
+
+        // Create the final object to add to the scene
+
+        const ellipse = new THREE.Line(ellipseGeometry, ellipseMaterial);
+        ellipse.rotation.x = (Math.PI) / 2;
+        scene.add(ellipse);
+        var ecc = 0;
+
+        function initPlanet() {
+            a = Planet.rx * Planet.rx;
+            b = Planet.ry * Planet.ry; 
+            c = Math.sqrt(a - b);
+            Planet.c = c;
+
+            ellipse.position.x = c;
+
+            ellipse.scale.x = Planet.rx/Planet.ry;
+
+            ecc = Planet.c * 2 / (Planet.rx * 2);
+            document.getElementById("eccentricity").innerHTML= Planet.day/2;
+
+
+        // Create the final object to add to the scene
+            Planet.orbitalSpeed = ((Math.sqrt(((Planet.gravitationalConstant * (Planet.MSun * (Math.pow(10, 24)))) / (Planet.rx * (Math.pow(10, 9)))))) / 1000) * 3600; //Calculate orbital speed in KM/H. Needs radius of planet in METERS!						
+        }
+
+
+        function updatePlanet() {
+
+            Planet.orbitalSpeedActual = calculateOrbitalSpeedPlanet(); //Update orbital speed after each frame						
+
+            //Adjust location of planet based on orital period in Days. 
+            //Also add ratio to speed up and slow down planet as orbital speed changes
+            Planet.degrees = Planet.degrees - (((360 / 365.256) * ((Planet.orbitalSpeedActual / Planet.orbitalSpeed * 0.5))));
+
+            Planet.day++;
+            if (roundPlanet(Planet.day, 0) == roundPlanet(456 / 10 * 9, 0)) {
+                //alert(Planet.degrees);
+            }
+
+            if (Planet.degrees < -360 - Planet.degreeOffset) {
+                Planet.degrees = 0 - Planet.degreeOffset;
+                Planet.day = 1;
+            }
+            initPlanet();
+
+        }
+
+        function calculateOrbitalSpeedPlanet() {
+
+            var tx = ((Planet.rx) * Math.cos(toRadiansPlanet(Planet.degrees))) + Planet.c; //C has to be subtracted AFTER the calculation for it to work!!
+            var ty = ((Planet.ry) * Math.sin(toRadiansPlanet(Planet.degrees)));
+
+            //You can verify these with "Max. orbital velocity" and "Min. orbital velocity" on the NASA Factsheet (muliply by 3600) -->http://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html
+            var speed = ((Math.sqrt((Planet.GMSun * (Math.pow(10, 20))) * ((2 / ((Math.sqrt((Math.pow(tx, 2)) + (Math.pow(ty, 2)))) * (Math.pow(10, 9)))) - (1 / (Planet.rx * (Math.pow(10, 9))))))) / 1000) * 3600;
+
+            return speed;
+        }
+
+        function renderPointPlanet(x, y) {
+            sphere3.position.set(x, 0, y);
+        }
+
+        function toRadiansPlanet(value) {
+            return value * (Math.PI / 180);
+        }
+
+        function roundPlanet(value, decimals) {
+            return Number(Math.round(value + 'e' + decimals) + 'e-' + decimals);
+        }
+
+        function numberWithCommasPlanet(x) {
+            return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+
+
+        camera.position.y = 5;
+        var lookAtIndex = 2;
+        camera.lookAt(star[lookAtIndex].position);
+        initPlanet();
+        function animate() {
+
+            requestAnimationFrame(animate);
+
+
+            renderPointPlanet(Planet.x + c + ((Planet.rx) * Math.cos(toRadiansPlanet(Planet.degrees))), Planet.y + ((Planet.ry) * Math.sin(toRadiansPlanet(Planet.degrees))));
+
+            planetLight.position.x = sphere3.position.x;
+            planetLight.position.z = sphere3.position.z;
+            camera.position.x = sphere3.position.x;
+            camera.position.z = sphere3.position.z;
+            camera.lookAt(star[lookAtIndex].position);
+
+            renderer.render(scene, camera);
+
+            updatePlanet();
+
+
+        }
+        animate();
+        function onWindowResize() {
+
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(window.innerWidth+2, window.innerHeight+2);
+
+        }
+        document.body.onkeyup = function(e){
+           if(e.keyCode == 32){
+               if(lookAtIndex<star.length){
+                       lookAtIndex++;
+                   }
+                   console.log(lookAtIndex);
+               }
+               else{
+                   lookAtIndex = 0;
+               }
+        }
+        
+
+        //let f1 = gui.addFolder("Stars");
+        //f1 = gui.add(star);
+    </script>
+    <div id="skyimage" style="width:100%;height:100%;display:none"></div>
+    <div id="eccentricity" style="position:absolute; top:100px; left: 200px "></div>
+</body>
+
+</html>
